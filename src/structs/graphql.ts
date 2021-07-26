@@ -15,6 +15,7 @@ export default buildSchema(`
 
   type StoreItem {
     id: String!
+    description: String
     name: String!
     image: String
     discount: Int

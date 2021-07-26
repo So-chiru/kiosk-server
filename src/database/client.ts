@@ -14,8 +14,7 @@ let client: RedisClient = new RedisClient({
 })
 
 export const init = async () => {
-  // const db = process.env.NODE_ENV === 'production' ? 1 : 2
-  const db = 2
+  const db = process.env.NODE_ENV === 'production' ? 1 : 2
 
   const response = await client.select(db)
 

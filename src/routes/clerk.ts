@@ -4,11 +4,9 @@ import { KioskRoute } from 'src/@types/routes'
 const Route: KioskRoute[] = [
   {
     method: 'get',
-    url: '/menu/add',
+    url: '/call_clerk',
     func: (ctx: Context) => {
-      const data = ctx.body
-
-      console.log(data)
+      ctx.body = ''
     }
   }
 ]
