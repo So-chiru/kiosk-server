@@ -9,6 +9,7 @@ import logger from './logger'
 import router, { ghttp } from './router'
 import mount from 'koa-mount'
 import cors from '@koa/cors'
+import bodyParser from 'koa-bodyparser'
 
 const app = new Koa()
 
@@ -18,6 +19,7 @@ app
       origin: 'http://localhost:8080'
     })
   )
+  .use(bodyParser())
   .use(async (ctx: Koa.Context, next: Koa.Next) => {
     await next()
 

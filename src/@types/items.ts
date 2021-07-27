@@ -1,9 +1,9 @@
-declare interface StoreItemOption {
+export interface StoreItemOption {
   flavor?: string
   [index: string]: string | number | undefined
 }
 
-declare interface StoreItemBase {
+export interface StoreItemBase {
   name: string
   description?: string
   image?: string
@@ -12,17 +12,21 @@ declare interface StoreItemBase {
   options?: StoreItemOption
 }
 
-declare interface StoreItem extends StoreItemBase {
+export interface StoreItem extends StoreItemBase {
   id: string
 }
 
-declare interface StoreCategory {
+export interface StoreItemWithAmounts extends StoreItem {
+  amount: number
+}
+
+export interface StoreCategory {
   id: string
   name: string
   items: StoreItem[]
 }
 
-declare interface CartItem {
+export interface CartItem {
   item: StoreItem
   amount: number
 }

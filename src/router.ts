@@ -14,12 +14,13 @@ export const ghttp = graphqlHTTP({
 
 import addRoutes from './routes/add'
 import clerkRoutes from './routes/clerk'
+import orderRoutes from './routes/order'
 
 const routesAdd = (...args: KioskRoute[][]) =>
   args.forEach(routes =>
     routes.map(route => router[route.method](route.url, route.func))
   )
 
-routesAdd(addRoutes, clerkRoutes)
+routesAdd(addRoutes, clerkRoutes, orderRoutes)
 
 export default router

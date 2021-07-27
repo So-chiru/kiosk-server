@@ -1,5 +1,12 @@
-import { inspect, promisify } from 'util'
+import { promisify } from 'util'
 import db, { isDatabaseClientReady } from './client'
+import { StoreItem } from 'src/@types/items'
+import {
+  StoreOrder,
+  StoreOrderState,
+  VerifiedStoreOrderRequest
+} from '../@types/order'
+import { v4 as uuidv4 } from 'uuid'
 
 const get = () => {
   if (!isDatabaseClientReady()) {
@@ -7,7 +14,7 @@ const get = () => {
   }
 }
 
-const getMenuItem = async (id: string) => {
+const getMenuItem = async (id: string): Promise<StoreItem | null> => {
   const data = await promisify(db.hget).bind(db)('items', id)
 
   if (!data) {
@@ -61,11 +68,71 @@ const getAllCategories = async () => {
   return Object.keys(data).map(key => JSON.parse(data[key]))
 }
 
+const getOrder = async (orderId: string): Promise<StoreOrder | null> => {
+  const data = await promisify(db.hget).bind(db)('orders', orderId)
+
+  if (!data) {
+    return null
+  }
+
+  return JSON.parse(data)
+}
+
+const updateOrder = async (
+  orderId: string,
+  order: StoreOrder
+): Promise<boolean> => {
+  const data = await promisify(db.hset).bind(db)([
+    'orders',
+    orderId,
+    JSON.stringify(order)
+  ])
+
+  if (!data) {
+    return false
+  }
+
+  return true
+}
+
+const makeAnOrder = async (
+  order: VerifiedStoreOrderRequest,
+  state = StoreOrderState.WaitingPayment
+): Promise<StoreOrder> => {
+  const orderId = uuidv4()
+
+  if (await getOrder(orderId)) {
+    return makeAnOrder(order)
+  }
+
+  const orderData = {
+    id: orderId,
+    date: Date.now(),
+    state,
+    ...order
+  }
+
+  const data = await promisify(db.hset).bind(db)([
+    'orders',
+    orderId,
+    JSON.stringify(orderData)
+  ])
+
+  if (!data) {
+    throw new Error('Failed to make an order, ' + data)
+  }
+
+  return orderData
+}
+
 export default {
   get,
   getCategory,
   getMenus,
   getAllCategories,
   getMenuItem,
-  getAllMenuItems
+  getAllMenuItems,
+  getOrder,
+  updateOrder,
+  makeAnOrder
 }
