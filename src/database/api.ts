@@ -7,6 +7,7 @@ import {
   VerifiedStoreOrderRequest
 } from '../@types/order'
 import { v4 as uuidv4 } from 'uuid'
+import { Callback } from 'redis'
 
 const get = () => {
   if (!isDatabaseClientReady()) {
@@ -68,6 +69,16 @@ const getAllCategories = async () => {
   return Object.keys(data).map(key => JSON.parse(data[key]))
 }
 
+const getPreOrder = async (orderId: string): Promise<StoreOrder | null> => {
+  const data = await promisify(db.hget).bind(db)('preOrders', orderId)
+
+  if (!data) {
+    return null
+  }
+
+  return JSON.parse(data)
+}
+
 const getOrder = async (orderId: string): Promise<StoreOrder | null> => {
   const data = await promisify(db.hget).bind(db)('orders', orderId)
 
@@ -95,14 +106,47 @@ const updateOrder = async (
   return true
 }
 
-const makeAnOrder = async (
+const updatePreOrder = async (
+  orderId: string,
+  order: StoreOrder
+): Promise<boolean> => {
+  const data = await promisify(db.hset).bind(db)([
+    'preOrders',
+    orderId,
+    JSON.stringify(order)
+  ])
+
+  if (!data) {
+    return false
+  }
+
+  return true
+}
+
+const deletePreOrder = async (orderId: string): Promise<boolean> => {
+  return new Promise((resolve, reject) =>
+    db.hdel('preOrders', orderId, (err, res) => {
+      if (err) {
+        return reject(err)
+      }
+
+      if (!res) {
+        return resolve(false)
+      }
+
+      return resolve(true)
+    })
+  )
+}
+
+const makeAnPreOrder = async (
   order: VerifiedStoreOrderRequest,
   state = StoreOrderState.WaitingPayment
 ): Promise<StoreOrder> => {
   const orderId = uuidv4()
 
-  if (await getOrder(orderId)) {
-    return makeAnOrder(order)
+  if ((await getPreOrder(orderId)) || (await getOrder(orderId))) {
+    return makeAnPreOrder(order)
   }
 
   const orderData = {
@@ -113,7 +157,7 @@ const makeAnOrder = async (
   }
 
   const data = await promisify(db.hset).bind(db)([
-    'orders',
+    'preOrders',
     orderId,
     JSON.stringify(orderData)
   ])
@@ -125,6 +169,26 @@ const makeAnOrder = async (
   return orderData
 }
 
+const promotePreOrderToOrder = async (order: StoreOrder) => {
+  if (order.state === StoreOrderState.WaitingAccept) {
+    order.state = StoreOrderState.Done
+  }
+
+  await deletePreOrder(order.id)
+
+  const data = await promisify(db.hset).bind(db)([
+    'orders',
+    order.id,
+    JSON.stringify(order)
+  ])
+
+  if (!data) {
+    throw new Error('Failed to make an order, ' + data)
+  }
+
+  return order
+}
+
 export default {
   get,
   getCategory,
@@ -132,7 +196,11 @@ export default {
   getAllCategories,
   getMenuItem,
   getAllMenuItems,
+  deletePreOrder,
+  getPreOrder,
+  updatePreOrder,
   getOrder,
   updateOrder,
-  makeAnOrder
+  makeAnPreOrder,
+  promotePreOrderToOrder
 }

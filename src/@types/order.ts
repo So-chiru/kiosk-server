@@ -11,10 +11,9 @@ export enum StoreOrderState {
   Aborted = -300,
   Canceled = -200,
   Failed = -100,
-  Purchased = 0,
-  Ready = 10,
-  InProgress = 20,
-  WaitingPayment = 100
+  Done = 0,
+  WaitingPayment = 100,
+  WaitingAccept = 200
 }
 
 export enum StorePaymentMethod {

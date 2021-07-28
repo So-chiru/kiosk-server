@@ -16,9 +16,40 @@ import addRoutes from './routes/add'
 import clerkRoutes from './routes/clerk'
 import orderRoutes from './routes/order'
 
+const makeSafeRoute = (func: KioskRoute['func']) => async (
+  ...args: Parameters<KioskRoute['func']>
+) => {
+  try {
+    const data = await func(...args)
+
+    if (typeof data !== 'undefined' && typeof args[0].body === 'undefined') {
+      args[0].body = JSON.stringify({
+        status: 'success',
+        data
+      })
+
+      return
+    }
+  } catch (e) {
+    args[0].status = 500
+    args[0].body = JSON.stringify({
+      status: 'error',
+      error: e.message
+    })
+
+    return
+  }
+
+  args[0].body = JSON.stringify({
+    status: 'success'
+  })
+}
+
 const routesAdd = (...args: KioskRoute[][]) =>
   args.forEach(routes =>
-    routes.map(route => router[route.method](route.url, route.func))
+    routes.map(route =>
+      router[route.method](route.url, makeSafeRoute(route.func))
+    )
   )
 
 routesAdd(addRoutes, clerkRoutes, orderRoutes)
