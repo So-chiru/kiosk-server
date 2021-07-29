@@ -332,6 +332,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@types/ws@npm:^7.4.7":
+  version: 7.4.7
+  resolution: "@types/ws@npm:7.4.7"
+  dependencies:
+    "@types/node": "*"
+  checksum: 38dee1bc2e480b610e44e9df92c76cae549a55491eee5454dd80d5c5039d6b7bf3f6884ffac5a72d0f638651cf3f2595b5cf172bea5e075c64f265256249e745
+  languageName: node
+  linkType: hard
+
 "abbrev@npm:1":
   version: 1.1.1
   resolution: "abbrev@npm:1.1.1"
@@ -1628,6 +1637,7 @@ fsevents@~2.3.2:
     "@types/pg": ^8.6.1
     "@types/redis": ^2.8.31
     "@types/uuid": ^8.3.1
+    "@types/ws": ^7.4.7
     dotenv: ^10.0.0
     graphql: ^15.5.1
     koa: ^2.13.1
@@ -1642,6 +1652,7 @@ fsevents@~2.3.2:
     ts-node: ^10.1.0
     typescript: ^4.3.5
     uuid: ^8.3.2
+    ws: ^8.0.0
   languageName: unknown
   linkType: soft
 
@@ -3082,6 +3093,21 @@ typescript@^4.3.5:
     signal-exit: ^3.0.2
     typedarray-to-buffer: ^3.1.5
   checksum: a26a8699c30cdc81d041b2c1049c6773f1e8401edda365874e9ca2dcf1fcf024dfeb43eea5e08c2e9b4e77be08a160d37f8d6c5d8c2d3ceccdf3d06e5cb38d35
+  languageName: node
+  linkType: hard
+
+"ws@npm:^8.0.0":
+  version: 8.0.0
+  resolution: "ws@npm:8.0.0"
+  peerDependencies:
+    bufferutil: ^4.0.1
+    utf-8-validate: ^5.0.2
+  peerDependenciesMeta:
+    bufferutil:
+      optional: true
+    utf-8-validate:
+      optional: true
+  checksum: c31bd9eb1ae544dde2469d0e6675c0ebe4759593aa238f5d0b2d8c725a1e8d0cadaca063d7f1a7dccb47c84e780da7aee004535409ba71a7816544ba9708e052
   languageName: node
   linkType: hard
 

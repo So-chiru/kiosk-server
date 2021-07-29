@@ -8,6 +8,7 @@ import { KioskRoute } from 'src/@types/routes'
 
 import dbAPI from '../database/api'
 import tossAPI from '../toss/api'
+import { clientsEvent } from '../events'
 
 const validatePayMethod = (payWith: unknown) => {
   if (typeof payWith === 'undefined' || payWith === null) {
@@ -17,8 +18,6 @@ const validatePayMethod = (payWith: unknown) => {
   const data =
     !isNaN(Number(payWith)) &&
     Object.values(StorePaymentMethod).filter(v => v === Number(payWith))[0]
-
-  console.log(data)
 
   if (data === false || typeof data === 'undefined') {
     throw new Error('결제 수단 선택이 올바르지 않습니다.')
@@ -142,23 +141,35 @@ const Route: KioskRoute[] = [
 
       const orderId = ctx.params.orderId
 
-      if (!orderId) {
-        throw new Error('주문 ID가 주어지지 않았습니다.')
+      if (!orderId || typeof orderId !== 'string') {
+        throw new Error('올바른 주문 ID가 주어지지 않았습니다.')
       }
 
-      if (
-        typeof orderId !== 'string' ||
-        typeof data.paymentKey !== 'string' ||
-        typeof data.amount !== 'string' ||
-        isNaN(Number(data.amount))
-      ) {
-        throw new Error('결제 데이터가 올바르게 지정되지 않았습니다.')
+      if (typeof data.amount !== 'string' || isNaN(Number(data.amount))) {
+        throw new Error('올바른 금액이 주어지지 않았습니다.')
       }
 
-      const order = await dbAPI.getPreOrder(orderId)
+      const order =
+        (await dbAPI.getPreOrder(orderId)) || (await dbAPI.getOrder(orderId))
 
       if (!order) {
         throw new Error('요청한 주문이 없습니다.')
+      }
+
+      const cachedResponse = await dbAPI.getCachedPaymentsData(order.id)
+      if (
+        (order.state === StoreOrderState.WaitingPayment ||
+          order.state === StoreOrderState.WaitingAccept) &&
+        cachedResponse
+      ) {
+        return {
+          ...cachedResponse,
+          state: order.state
+        }
+      }
+
+      if (order.state === StoreOrderState.Done) {
+        throw new Error('이미 결제가 끝났습니다.')
       }
 
       if (Number(data.amount) !== order.price) {
@@ -169,42 +180,61 @@ const Route: KioskRoute[] = [
         throw new Error('이미 결제가 완료된 건이나 오류가 발생한 건입니다.')
       }
 
-      const payments = await tossAPI.approvePayments(
-        order.id,
-        data.paymentKey,
-        order.price
-      )
-
-      console.log(payments)
-
-      if (payments.code && typeof payments.message !== 'undefined') {
-        throw new Error(`${payments.code}: ${payments.message}`)
-      }
-
-      if (payments.cancels) {
-        throw new Error('취소된 결제입니다.')
-      }
-
-      // TODO : 계좌 이체인 경우에는 따로 처리
-      if (
-        !payments ||
-        payments.status === 'CANCELED' ||
-        payments.status === 'PARTIAL_CANCELED' ||
-        payments.status === 'ABORTED' ||
-        payments.status === 'EXPIRED'
-      ) {
-        throw new Error('결제가 완료된 상태가 아닙니다. ' + payments.status)
-      }
-
       let currentState = StoreOrderState.WaitingPayment
+      let customResponse: { [index: string]: unknown } = {}
+      let paymentSecret: string | undefined
 
-      if (payments.status === 'DONE') {
+      if (order.payWith === StorePaymentMethod.Direct) {
         currentState = StoreOrderState.WaitingAccept
-      } else if (
-        payments.status === 'READY' ||
-        payments.status === 'IN_PROGRESS'
-      ) {
-        currentState = StoreOrderState.WaitingPayment
+      } else {
+        if (typeof data.paymentKey !== 'string') {
+          throw new Error('필요한 결재 키 값이 주어지지 않았습니다.')
+        }
+
+        const payments = await tossAPI.approvePayments(
+          order.id,
+          data.paymentKey,
+          order.price
+        )
+
+        console.log(payments)
+
+        if (payments.code && typeof payments.message !== 'undefined') {
+          throw new Error(`${payments.code}: ${payments.message}`)
+        }
+
+        if (payments.cancels) {
+          throw new Error('취소된 결제입니다.')
+        }
+
+        if (payments.totalAmount !== order.price) {
+          throw new Error('결제한 금액과 상품의 가격이 다릅니다.')
+        }
+
+        // TODO : 계좌 이체인 경우에는 따로 처리
+        if (
+          !payments ||
+          payments.status === 'CANCELED' ||
+          payments.status === 'PARTIAL_CANCELED' ||
+          payments.status === 'ABORTED' ||
+          payments.status === 'EXPIRED'
+        ) {
+          throw new Error('결제가 완료된 상태가 아닙니다. ' + payments.status)
+        }
+
+        if (payments.status === 'DONE') {
+          currentState = StoreOrderState.WaitingAccept
+        } else if (
+          payments.status === 'READY' ||
+          payments.status === 'IN_PROGRESS'
+        ) {
+          currentState = StoreOrderState.WaitingPayment
+        }
+
+        await dbAPI.setPaymentSecret(order.id, payments.secret)
+
+        paymentSecret = payments.secret
+        customResponse.virtualAccount = payments.virtualAccount
       }
 
       if (currentState === StoreOrderState.WaitingPayment) {
@@ -219,11 +249,15 @@ const Route: KioskRoute[] = [
         })
       }
 
-      return {
+      const responseData = {
         state: currentState,
-        price: payments.totalAmount,
-        virtualAccount: payments.virtualAccount
+        price: order.price,
+        ...customResponse
       }
+
+      await dbAPI.cachePaymentsData(order.id, responseData)
+
+      return responseData
     }
   },
   {
@@ -231,6 +265,57 @@ const Route: KioskRoute[] = [
     url: '/order/:orderId/accept',
     func: ctx => {
       const orderId = ctx.params.orderId
+    }
+  },
+  {
+    method: 'post',
+    url: '/order/toss_deposit',
+    func: async ctx => {
+      const body = ctx.request.body
+
+      if (!body || typeof body !== 'object') {
+        throw new Error('올바른 요청이 아닙니다.')
+      }
+
+      if (
+        typeof body.secret !== 'string' ||
+        typeof body.orderId !== 'string' ||
+        typeof body.status !== 'string'
+      ) {
+        throw new Error('올바른 요청이 아닙니다.')
+      }
+
+      if (
+        body.secret !== (await dbAPI.getPaymentSecret(body.orderId as string))
+      ) {
+        throw new Error('결제 정보가 올바르지 않습니다.')
+      }
+
+      const order =
+        (await dbAPI.getPreOrder(body.orderId)) ||
+        (await dbAPI.getOrder(body.orderId))
+
+      if (!order) {
+        throw new Error('주문이 없습니다.')
+      }
+
+      const currentState =
+        body.status === 'DONE'
+          ? StoreOrderState.WaitingAccept
+          : StoreOrderState.Canceled
+
+      const newOrder = {
+        ...order,
+        state: currentState
+      }
+
+      await dbAPI.promotePreOrderToOrder(newOrder)
+
+      try {
+        clientsEvent.run('command', order.id, 'STATE_UPDATE', newOrder)
+      } catch (e) {}
+
+      return true
     }
   },
   {

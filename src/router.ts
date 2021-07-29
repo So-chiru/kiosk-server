@@ -5,6 +5,7 @@ import { GraphQLRoot } from './structs/graphql_root'
 import { KioskRoute } from './@types/routes'
 
 const router = new Router()
+export const wsRouter = new Router()
 
 export const ghttp = graphqlHTTP({
   schema: GraphQLStruct,
@@ -31,6 +32,10 @@ const makeSafeRoute = (func: KioskRoute['func']) => async (
       return
     }
   } catch (e) {
+    if (process.env.NODE_ENV === 'development') {
+      console.log(e)
+    }
+
     args[0].status = 500
     args[0].body = JSON.stringify({
       status: 'error',
@@ -45,13 +50,11 @@ const makeSafeRoute = (func: KioskRoute['func']) => async (
   })
 }
 
-const routesAdd = (...args: KioskRoute[][]) =>
+const routesAdd = (to: Router, ...args: KioskRoute[][]) =>
   args.forEach(routes =>
-    routes.map(route =>
-      router[route.method](route.url, makeSafeRoute(route.func))
-    )
+    routes.map(route => to[route.method](route.url, makeSafeRoute(route.func)))
   )
 
-routesAdd(addRoutes, clerkRoutes, orderRoutes)
+routesAdd(router, addRoutes, clerkRoutes, orderRoutes)
 
 export default router

@@ -7,7 +7,6 @@ import {
   VerifiedStoreOrderRequest
 } from '../@types/order'
 import { v4 as uuidv4 } from 'uuid'
-import { Callback } from 'redis'
 
 const get = () => {
   if (!isDatabaseClientReady()) {
@@ -170,10 +169,6 @@ const makeAnPreOrder = async (
 }
 
 const promotePreOrderToOrder = async (order: StoreOrder) => {
-  if (order.state === StoreOrderState.WaitingAccept) {
-    order.state = StoreOrderState.Done
-  }
-
   await deletePreOrder(order.id)
 
   const data = await promisify(db.hset).bind(db)([
@@ -183,11 +178,62 @@ const promotePreOrderToOrder = async (order: StoreOrder) => {
   ])
 
   if (!data) {
-    throw new Error('Failed to make an order, ' + data)
+    throw new Error('Failed to make an order. ' + order.id)
   }
 
   return order
 }
+
+const cachePaymentsData = async (id: string, data: Record<string, unknown>) => {
+  return new Promise((resolve, reject) =>
+    db.set(
+      'paymentsSession.' + id,
+      JSON.stringify(data),
+      'EX',
+      1800,
+      (err, res) => {
+        if (err) {
+          return reject(err)
+        }
+
+        if (res !== 'OK') {
+          return resolve(false)
+        }
+
+        return resolve(true)
+      }
+    )
+  )
+}
+
+const getCachedPaymentsData = async (id: string) => {
+  const response = await promisify(db.get).bind(db)('paymentsSession.' + id)
+
+  if (!response) {
+    return null
+  }
+
+  return JSON.parse(response)
+}
+
+const setPaymentSecret = async (id: string, secret: string) => {
+  return new Promise((resolve, reject) =>
+    db.set('paymentsSecret.' + id, secret, 'EX', 1800, (err, res) => {
+      if (err) {
+        return reject(err)
+      }
+
+      if (res !== 'OK') {
+        return resolve(false)
+      }
+
+      return resolve(true)
+    })
+  )
+}
+
+const getPaymentSecret = (id: string) =>
+  promisify(db.get).bind(db)('paymentsSecret.' + id)
 
 export default {
   get,
@@ -202,5 +248,9 @@ export default {
   getOrder,
   updateOrder,
   makeAnPreOrder,
-  promotePreOrderToOrder
+  promotePreOrderToOrder,
+  cachePaymentsData,
+  getCachedPaymentsData,
+  setPaymentSecret,
+  getPaymentSecret
 }
