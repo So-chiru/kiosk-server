@@ -2,6 +2,7 @@ import { promisify } from 'util'
 import db, { isDatabaseClientReady } from './client'
 import { StoreItem } from 'src/@types/items'
 import {
+  DBFoundOrder,
   StoreOrder,
   StoreOrderState,
   VerifiedStoreOrderRequest
@@ -88,6 +89,25 @@ const getOrder = async (orderId: string): Promise<StoreOrder | null> => {
   return JSON.parse(data)
 }
 
+const findOrder = async (orderId: string): Promise<DBFoundOrder | null> => {
+  let data = await getOrder(orderId)
+  let isPreOrder: boolean | null = false
+
+  if (!data) {
+    data = await getPreOrder(orderId)
+    isPreOrder = true
+  }
+
+  if (!data) {
+    return null
+  }
+
+  return {
+    preOrder: isPreOrder,
+    order: data
+  }
+}
+
 const updateOrder = async (
   orderId: string,
   order: StoreOrder
@@ -138,6 +158,22 @@ const deletePreOrder = async (orderId: string): Promise<boolean> => {
   )
 }
 
+const deleteOrder = async (orderId: string): Promise<boolean> => {
+  return new Promise((resolve, reject) =>
+    db.hdel('orders', orderId, (err, res) => {
+      if (err) {
+        return reject(err)
+      }
+
+      if (!res) {
+        return resolve(false)
+      }
+
+      return resolve(true)
+    })
+  )
+}
+
 const makeAnPreOrder = async (
   order: VerifiedStoreOrderRequest,
   state = StoreOrderState.WaitingPayment
@@ -150,7 +186,7 @@ const makeAnPreOrder = async (
 
   const orderData = {
     id: orderId,
-    date: Date.now(),
+    date: new Date().toISOString(),
     state,
     ...order
   }
@@ -237,6 +273,7 @@ const getPaymentSecret = (id: string) =>
 
 export default {
   get,
+  findOrder,
   getCategory,
   getMenus,
   getAllCategories,

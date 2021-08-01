@@ -10,6 +10,8 @@ import dbAPI from '../database/api'
 import tossAPI from '../toss/api'
 import { clientsEvent } from '../events'
 
+import orders from '../commands/order'
+
 const validatePayMethod = (payWith: unknown) => {
   if (typeof payWith === 'undefined' || payWith === null) {
     throw new Error('결제 수단이 선택되지 않았습니다.')
@@ -263,8 +265,42 @@ const Route: KioskRoute[] = [
   {
     method: 'post',
     url: '/order/:orderId/accept',
-    func: ctx => {
+    func: async ctx => {
       const orderId = ctx.params.orderId
+
+      if (typeof orderId !== 'string') {
+        throw new Error('올바른 요청이 아닙니다.')
+      }
+
+      // TODO : 클라이언트 인증
+
+      const order =
+        (await dbAPI.getPreOrder(orderId)) || (await dbAPI.getOrder(orderId))
+
+      if (!order) {
+        throw new Error('주문이 없습니다.')
+      }
+
+      if (order.state === StoreOrderState.Done) {
+        throw new Error('이미 확인이 완료된 주문입니다.')
+      }
+
+      if (order.state !== StoreOrderState.WaitingAccept) {
+        throw new Error('확인을 기다리는 주문이 아닙니다.')
+      }
+
+      const newOrder = {
+        ...order,
+        state: StoreOrderState.Done
+      }
+
+      await dbAPI.updateOrder(order.id, newOrder)
+
+      try {
+        clientsEvent.run('command', order.id, 'STATE_UPDATE', newOrder)
+      } catch (e) {}
+
+      return true
     }
   },
   {
@@ -332,40 +368,35 @@ const Route: KioskRoute[] = [
         throw new Error('요청 body가 Object 타입이 아닙니다.')
       }
 
-      let order = await dbAPI.getPreOrder(orderId)
-      let isPreOrder = true
-
-      if (!order) {
-        order = await dbAPI.getOrder(orderId)
-        isPreOrder = false
+      if (
+        !ctx.request.body.cancelReason ||
+        typeof ctx.request.body.cancelReason !== 'string'
+      ) {
+        throw new Error('취소되는 이유를 지정하지 않았습니다.')
       }
 
-      if (!order) {
-        throw new Error('해당 주문은 없습니다.')
+      if (ctx.request.body.cancelReason.length > 2 ** 8) {
+        throw new Error('취소하는 이유가 너무 깁니다. (> 256)')
       }
 
-      if (order.state === StoreOrderState.Canceled) {
-        throw new Error('이미 취소된 주문입니다.')
-      }
+      await orders.cancel(
+        orderId,
+        ctx.request.body.cancelReason,
+        async (order, reason) => {
+          if (order.state === StoreOrderState.WaitingAccept) {
+            try {
+              await tossAPI.cancelPayment(order.id, reason)
 
-      if (order.state === StoreOrderState.WaitingAccept) {
-        if (
-          !ctx.request.body.cancelReason ||
-          typeof ctx.request.body.cancelReason !== 'string'
-        ) {
-          throw new Error('취소되는 이유가 지정되지 않았습니다.')
+              return true
+            } catch (e) {
+              console.log(e)
+              return false
+            }
+          }
+
+          return true
         }
-
-        await tossAPI.cancelPayment(order.id, ctx.request.body.cancelReason)
-      }
-
-      order.state = StoreOrderState.Canceled
-
-      if (isPreOrder) {
-        dbAPI.deletePreOrder(order.id)
-      } else {
-        dbAPI.updateOrder(order.id, order)
-      }
+      )
 
       return true
     }
