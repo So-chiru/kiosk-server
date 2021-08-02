@@ -1,6 +1,11 @@
 import { validateUUID } from '../utils/string'
 import dbAPI from '../database/api'
-import { StoreOrder, StoreOrderState } from '../@types/order'
+import {
+  StoreOrder,
+  StoreOrderState,
+  StorePaymentMethod,
+  VerifiedStoreOrderRequest
+} from '../@types/order'
 
 /**
  * 데이터베이스에서 주문을 삭제합니다. preOrder인 경우 객체를 삭제하고,
@@ -53,6 +58,47 @@ const cancel = async (
   }
 }
 
+/**
+ * ID가 없는 주문 데이터를 ID를 가진 주문 데이터로 만들고, DB에 사전 주문을 생성합니다.
+ * @param data ID가 없는 주문 데이터
+ */
+const place = async (
+  data: VerifiedStoreOrderRequest,
+  payWith = StoreOrderState.WaitingPayment
+) => {
+  const order = await dbAPI.makeAnPreOrder(data, payWith)
+
+  return order
+}
+
+/**
+ * 주문 상태를 변경합니다.
+ *
+ * @param orderId 주문의 ID
+ * @param status 변경할 주문의 상태
+ */
+const updateStatus = async (orderId: string, status: StoreOrderState) => {
+  const found = await dbAPI.findOrder(orderId)
+
+  if (!found) {
+    throw new Error('해당 주문을 찾을 수 없습니다.')
+  }
+
+  if (found.preOrder) {
+    return dbAPI.updatePreOrder(orderId, {
+      ...found.order,
+      state: status
+    })
+  }
+
+  return dbAPI.updateOrder(orderId, {
+    ...found.order,
+    state: status
+  })
+}
+
 export default {
-  cancel
+  cancel,
+  place,
+  updateStatus
 }

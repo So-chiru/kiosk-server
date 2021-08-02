@@ -180,13 +180,16 @@ const makeAnPreOrder = async (
 ): Promise<StoreOrder> => {
   const orderId = uuidv4()
 
-  if ((await getPreOrder(orderId)) || (await getOrder(orderId))) {
+  if (await findOrder(orderId)) {
     return makeAnPreOrder(order)
   }
+
+  const lastOrder = await getMaxOrderSequence()
 
   const orderData = {
     id: orderId,
     date: new Date().toISOString(),
+    sequence: (lastOrder === null ? 0 : lastOrder[1]) + 1,
     state,
     ...order
   }
@@ -270,6 +273,39 @@ const setPaymentSecret = async (id: string, secret: string) => {
 
 const getPaymentSecret = (id: string) =>
   promisify(db.get).bind(db)('paymentsSecret.' + id)
+
+const getMaxOrderSequence = async (): Promise<[string, number] | null> =>
+  new Promise<[string, string] | null>((resolve, reject) =>
+    db.zrevrangebyscore(
+      'ordersSequence',
+      '+inf',
+      '-inf',
+      'WITHSCORES',
+      (err, reply) => {
+        if (err) {
+          return reject(err)
+        }
+
+        if (
+          !reply ||
+          typeof reply[0] === 'undefined' ||
+          typeof reply[1] === 'undefined'
+        ) {
+          return resolve(null)
+        }
+
+        return resolve(reply.slice(0, 2) as [string, string])
+      }
+    )
+  ).then(v => {
+    if (v && v.length) {
+      const [key, score] = v
+
+      return [key, Number(score)]
+    }
+
+    return null
+  })
 
 export default {
   get,

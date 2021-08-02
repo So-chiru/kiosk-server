@@ -17,6 +17,9 @@ import addRoutes from './routes/add'
 import clerkRoutes from './routes/clerk'
 import orderRoutes from './routes/order'
 
+// TODO : 만약 상태 인증을 필요로 하는 route가 있는 경우 KioskRoute interface에 authentication: true를
+// 구현하여 접속 중인 세션에 대한 인증을 진행할 수 있도록 구현
+
 const makeSafeRoute = (func: KioskRoute['func']) => async (
   ...args: Parameters<KioskRoute['func']>
 ) => {
