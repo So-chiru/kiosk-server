@@ -44,5 +44,6 @@ server.listen(process.env.PORT, () => {
 })
 
 import './socket'
+import './routines/order'
 
 export default app

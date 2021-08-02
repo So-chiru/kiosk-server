@@ -1,5 +1,5 @@
 import { v4 } from 'uuid'
-import { StoreOrderState } from './@types/order'
+import { OrderEvents } from './@types/order'
 
 const createUUID = (): string => {
   return v4()
@@ -9,29 +9,27 @@ interface WebSocketClientsEvent {
   command: (...args: any[]) => void
 }
 
-interface IEventBus<T> {
-  on: <K extends keyof T>(
-    event: K,
-    callback: T[K] & ((...args: any[]) => void),
-    id?: string
-  ) => string
+interface IEventBus<T extends Record<keyof T, (...args: any[]) => any>> {
+  on: <K extends keyof T>(event: K, callback: T[K], id?: string) => string
   off: <K extends keyof T>(event: K, uuid: string) => void
-  run: <K extends keyof T>(event: K, id: string, ...args: any[]) => void
-  runAll: <K extends keyof T>(event: K, ...args: any[]) => void
+  run: <K extends keyof T>(
+    event: K,
+    id: string,
+    ...args: Parameters<T[K]>
+  ) => void
+  runAll: <K extends keyof T>(event: K, ...args: Parameters<T[K]>) => void
 }
 
-export default class eventBus<T> implements IEventBus<T> {
+export default class eventBus<
+  T extends Record<keyof T, (...args: any[]) => any>
+> implements IEventBus<T> {
   lists: Map<keyof T, Map<string, (...args: any[]) => void>>
 
   constructor () {
     this.lists = new Map()
   }
 
-  on<K extends keyof T> (
-    event: K,
-    callback: T[K] & ((...args: any[]) => void),
-    id?: string
-  ): string {
+  on<K extends keyof T> (event: K, callback: T[K], id?: string): string {
     if (!this.lists.has(event)) {
       this.lists.set(event, new Map())
     }
@@ -57,7 +55,7 @@ export default class eventBus<T> implements IEventBus<T> {
     return this.lists.get(event)!.delete(uuid)
   }
 
-  run<K extends keyof T> (event: K, id: string, ...args: any[]) {
+  run<K extends keyof T> (event: K, id: string, ...args: Parameters<T[K]>) {
     if (!this.lists.has(event)) {
       return
     }
@@ -71,7 +69,7 @@ export default class eventBus<T> implements IEventBus<T> {
     }
   }
 
-  runAll<K extends keyof T> (event: K, ...args: any[]) {
+  runAll<K extends keyof T> (event: K, ...args: Parameters<T[K]>) {
     if (!this.lists.has(event)) {
       return
     }
@@ -83,3 +81,4 @@ export default class eventBus<T> implements IEventBus<T> {
 }
 
 export const clientsEvent = new eventBus<WebSocketClientsEvent>()
+export const orderEvents = new eventBus<OrderEvents>()

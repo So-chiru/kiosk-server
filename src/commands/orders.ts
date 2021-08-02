@@ -3,9 +3,9 @@ import dbAPI from '../database/api'
 import {
   StoreOrder,
   StoreOrderState,
-  StorePaymentMethod,
   VerifiedStoreOrderRequest
 } from '../@types/order'
+import { orderEvents } from '../events'
 
 /**
  * 데이터베이스에서 주문을 삭제합니다. preOrder인 경우 객체를 삭제하고,
@@ -56,6 +56,12 @@ const cancel = async (
   } else {
     await dbAPI.updateOrder(orderResult.order.id, orderResult.order)
   }
+
+  orderEvents.runAll('canceled', {
+    id: orderResult.order.id,
+    type: 'STATUS_UPDATE',
+    order: orderResult.order
+  })
 }
 
 /**
@@ -67,6 +73,12 @@ const place = async (
   payWith = StoreOrderState.WaitingPayment
 ) => {
   const order = await dbAPI.makeAnPreOrder(data, payWith)
+
+  orderEvents.runAll('placed', {
+    id: order.id,
+    type: 'STATUS_UPDATE',
+    order: order
+  })
 
   return order
 }
@@ -84,21 +96,60 @@ const updateStatus = async (orderId: string, status: StoreOrderState) => {
     throw new Error('해당 주문을 찾을 수 없습니다.')
   }
 
-  if (found.preOrder) {
-    return dbAPI.updatePreOrder(orderId, {
-      ...found.order,
-      state: status
-    })
-  }
-
-  return dbAPI.updateOrder(orderId, {
+  const newData = {
     ...found.order,
     state: status
+  }
+
+  orderEvents.runAll('statusUpdate', {
+    id: found.order.id,
+    type: 'STATUS_UPDATE',
+    order: newData
   })
+
+  if (found.preOrder) {
+    return dbAPI.updatePreOrder(orderId, newData)
+  }
+
+  return dbAPI.updateOrder(orderId, newData)
+}
+
+const accept = async (orderId: string) => {
+  const found = await dbAPI.findOrder(orderId)
+
+  if (!found) {
+    throw new Error('주문이 없습니다.')
+  }
+
+  if (found.order.state === StoreOrderState.Done) {
+    throw new Error('이미 확인이 완료된 주문입니다.')
+  }
+
+  if (found.order.state !== StoreOrderState.WaitingAccept) {
+    throw new Error('확인을 기다리는 주문이 아닙니다.')
+  }
+
+  const newOrder = {
+    ...found.order,
+    state: StoreOrderState.Done
+  }
+
+  await dbAPI.updateOrder(found.order.id, newOrder)
+
+  try {
+    orderEvents.runAll('accepted', {
+      id: found.order.id,
+      type: 'STATUS_UPDATE',
+      order: newOrder
+    })
+  } catch (e) {}
+
+  return true
 }
 
 export default {
   cancel,
   place,
-  updateStatus
+  updateStatus,
+  accept
 }

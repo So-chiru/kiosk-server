@@ -40,11 +40,27 @@ export interface StoreOrder extends VerifiedStoreOrderRequest {
   date: string
   payWith: StorePaymentMethod
   state: StoreOrderState
-  sequence: number
   cancel?: StoreCancel
 }
 
 export interface DBFoundOrder {
   preOrder: boolean
+  order: StoreOrder
+}
+
+/**
+ * 서버 내에서 주문 이벤트가 발생하면 처리할 이벤트의 콜백을 정의한 함수 인터페이스입니다.
+ */
+export interface OrderEvents {
+  accepted: (event: OrderEventCallback) => void
+  canceled: (event: OrderEventCallback) => void
+  placed: (event: OrderEventCallback) => void
+  payments: (event: OrderEventCallback) => void
+  statusUpdate: (event: OrderEventCallback) => void
+}
+
+export interface OrderEventCallback {
+  id: string
+  type: 'STATUS_UPDATE'
   order: StoreOrder
 }

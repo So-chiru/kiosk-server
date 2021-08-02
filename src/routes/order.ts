@@ -4,9 +4,9 @@ import { KioskRoute } from '../@types/routes'
 
 import dbAPI from '../database/api'
 import tossAPI from '../toss/api'
-import { clientsEvent } from '../events'
+import { clientsEvent, orderEvents } from '../events'
 
-import orders from '../commands/order'
+import orders from '../commands/orders'
 import {
   validateOrderItems,
   validatePayMethod,
@@ -161,17 +161,24 @@ const Route: KioskRoute[] = [
         customResponse.virtualAccount = payments.virtualAccount
       }
 
-      if (currentState === StoreOrderState.WaitingPayment) {
-        await dbAPI.updatePreOrder(found.order.id, {
-          ...found.order,
-          state: currentState
-        })
-      } else {
-        await dbAPI.promotePreOrderToOrder({
-          ...found.order,
-          state: currentState
-        })
+      const newData = {
+        ...found.order,
+        state: currentState
       }
+
+      if (currentState === StoreOrderState.WaitingPayment) {
+        await dbAPI.updatePreOrder(found.order.id, newData)
+      } else {
+        await dbAPI.promotePreOrderToOrder(newData)
+      }
+
+      try {
+        orderEvents.runAll('payments', {
+          id: found.order.id,
+          type: 'STATUS_UPDATE',
+          order: newData
+        })
+      } catch (e) {}
 
       const responseData = {
         state: currentState,
@@ -217,6 +224,11 @@ const Route: KioskRoute[] = [
       await dbAPI.updateOrder(order.id, newOrder)
 
       try {
+        orderEvents.runAll('statusUpdate', {
+          id: order.id,
+          type: 'STATUS_UPDATE',
+          order
+        })
         clientsEvent.run('command', order.id, 'STATE_UPDATE', newOrder)
       } catch (e) {}
 
