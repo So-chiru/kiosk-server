@@ -182,6 +182,9 @@ const Route: KioskRoute[] = [
 
       const responseData = {
         state: currentState,
+        left:
+          ((process.env.DEFAULT_PAYMENT_TIMEOUT as number | undefined) ||
+            99999) * 1000,
         price: found.order.price,
         ...customResponse
       }
@@ -201,36 +204,7 @@ const Route: KioskRoute[] = [
         throw new Error('올바른 요청이 아닙니다.')
       }
 
-      const order =
-        (await dbAPI.getPreOrder(orderId)) || (await dbAPI.getOrder(orderId))
-
-      if (!order) {
-        throw new Error('주문이 없습니다.')
-      }
-
-      if (order.state === StoreOrderState.Done) {
-        throw new Error('이미 확인이 완료된 주문입니다.')
-      }
-
-      if (order.state !== StoreOrderState.WaitingAccept) {
-        throw new Error('확인을 기다리는 주문이 아닙니다.')
-      }
-
-      const newOrder = {
-        ...order,
-        state: StoreOrderState.Done
-      }
-
-      await dbAPI.updateOrder(order.id, newOrder)
-
-      try {
-        orderEvents.runAll('statusUpdate', {
-          id: order.id,
-          type: 'STATUS_UPDATE',
-          order
-        })
-        clientsEvent.run('command', order.id, 'STATE_UPDATE', newOrder)
-      } catch (e) {}
+      await orders.accept(orderId)
 
       return true
     }

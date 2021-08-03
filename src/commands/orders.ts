@@ -5,7 +5,17 @@ import {
   StoreOrderState,
   VerifiedStoreOrderRequest
 } from '../@types/order'
-import { orderEvents } from '../events'
+import { clientsEvent, orderEvents } from '../events'
+
+/**
+ * 데이터베이스에서 주문을 가져와 반환합니다.
+ * @param id  가져올 주문의 ID
+ */
+const get = async (id: string) => {
+  const data = await dbAPI.findOrder(id)
+
+  return data && data.order
+}
 
 /**
  * 데이터베이스에서 주문을 삭제합니다. preOrder인 경우 객체를 삭제하고,
@@ -57,11 +67,15 @@ const cancel = async (
     await dbAPI.updateOrder(orderResult.order.id, orderResult.order)
   }
 
-  orderEvents.runAll('canceled', {
-    id: orderResult.order.id,
-    type: 'STATUS_UPDATE',
-    order: orderResult.order
-  })
+  ;(res => {
+    setTimeout(() => {
+      orderEvents.runAll('canceled', {
+        id: res.order.id,
+        type: 'STATUS_UPDATE',
+        order: res.order
+      })
+    })
+  })(orderResult)
 }
 
 /**
@@ -142,12 +156,14 @@ const accept = async (orderId: string) => {
       type: 'STATUS_UPDATE',
       order: newOrder
     })
+    clientsEvent.run('command', newOrder.id, 'STATE_UPDATE', newOrder)
   } catch (e) {}
 
   return true
 }
 
 export default {
+  get,
   cancel,
   place,
   updateStatus,
