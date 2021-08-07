@@ -62,13 +62,17 @@ export const cancelPayment = async (orderId: string, reason: string) => {
     .then(async v => {
       const data = await v.json()
 
-      if (v.status !== 200) {
+      if (v.status !== 200 && data.code !== 'ALREADY_CANCELED_PAYMENT') {
         throw new Error(`${data.code}: ${data.message}`)
       }
 
       return data
     })
     .then(v => {
+      if (v.code && v.code === 'ALREADY_CANCELED_PAYMENT') {
+        return
+      }
+
       if (!v.status) {
         throw new Error('상태 값이 주어지지 않았습니다.')
       }

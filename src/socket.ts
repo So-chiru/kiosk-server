@@ -46,6 +46,10 @@ wss.on('connection', (ws, req) => {
           (...args: any[]) => ws.emit('command', ...args),
           message.setOrderId
         )
+      } else if (message.setAdmin) {
+        // TODO : 클라이언트가 권한을 가지고 있는지 확인하는 로직 만들기
+
+        ;(ws as any).admin = true
       }
     }
   })
@@ -63,6 +67,18 @@ export const sendOrderClient = (
     if (socket && (socket as any).orderId === orderId) func(socket)
   })
 }
+
+export const sendAdminClient = (func: (ws: WebSocket) => void) => {
+  wss.clients.forEach(socket => {
+    if (socket && (socket as any).admin) func(socket)
+  })
+}
+
+clientsEvent.on('adminCommand', (...args: any[]) => {
+  sendAdminClient(ws => {
+    ws.emit('command', ...args)
+  })
+})
 
 server.on(
   'upgrade',

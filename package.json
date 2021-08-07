@@ -29,6 +29,7 @@
     "@types/redis": "^2.8.31",
     "@types/uuid": "^8.3.1",
     "@types/ws": "^7.4.7",
+    "arg": "^5.0.0",
     "dotenv": "^10.0.0",
     "nodemon": "^2.0.12",
     "ts-node": "^10.1.0"

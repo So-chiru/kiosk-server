@@ -18,6 +18,14 @@ const get = async (id: string) => {
 }
 
 /**
+ * 데이터베이스에서 모든 주문을 가져와 반환합니다.
+ */
+const all = async () =>
+  (await dbAPI.getAllOrders())?.sort(
+    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+  )
+
+/**
  * 데이터베이스에서 주문을 삭제합니다. preOrder인 경우 객체를 삭제하고,
  * 일반 order인 경우에는 취소 상태로 만들어 업데이트합니다.
  *
@@ -28,7 +36,10 @@ const get = async (id: string) => {
 const cancel = async (
   id: string,
   cancelReason: string,
-  cancelValidation?: (order: StoreOrder, reason: string) => Promise<boolean>
+  cancelValidation?: (
+    order: StoreOrder,
+    reason: string
+  ) => Promise<boolean | Error>
 ) => {
   if (!validateUUID(id)) {
     throw new Error('주어진 ID가 올바른 ID가 아닙니다.')
@@ -48,11 +59,14 @@ const cancel = async (
     throw new Error('이미 취소된 주문입니다.')
   }
 
-  if (
+  const validation =
     cancelValidation &&
-    !(await cancelValidation(orderResult.order, cancelReason))
-  ) {
-    throw new Error('취소 요청 검증에 실패하여 취소하지 못했습니다.')
+    (await cancelValidation(orderResult.order, cancelReason))
+
+  if (validation && validation !== true) {
+    throw validation instanceof Error
+      ? validation
+      : new Error('취소 요청 검증에 실패하여 취소하지 못했습니다.')
   }
 
   orderResult.order.state = StoreOrderState.Canceled
@@ -87,6 +101,7 @@ const place = async (
   payWith = StoreOrderState.WaitingPayment
 ) => {
   const order = await dbAPI.makeAnPreOrder(data, payWith)
+  const rank = await dbAPI.makeAnOrderDate(order)
 
   orderEvents.runAll('placed', {
     id: order.id,
@@ -95,6 +110,26 @@ const place = async (
   })
 
   return order
+}
+
+/**
+ * 데이터베이스에서 주어진 날짜의 범위를 가져와 반환합니다.
+ *
+ * @param start 검색을 시작할 시각 (초)
+ * @param end 검색을 끝낼 시각 (초)
+ */
+const findByDate = async (start: number, end: number) => {
+  const orderNames = await dbAPI.findOrderRange(start, end)
+
+  if (!orderNames) {
+    return []
+  }
+
+  return (((await dbAPI.getOrders(...orderNames)).filter(
+    v => v !== null
+  ) as unknown) as StoreOrder[]).sort(
+    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+  )
 }
 
 /**
@@ -164,8 +199,10 @@ const accept = async (orderId: string) => {
 
 export default {
   get,
+  all,
   cancel,
   place,
   updateStatus,
+  findByDate,
   accept
 }

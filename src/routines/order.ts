@@ -3,20 +3,38 @@ import orders from '../commands/orders'
 import { clientsEvent, orderEvents } from '../events'
 
 orderEvents.on('accepted', event => {
-  clientsEvent.run('command', event.id, 'STATE_UPDATE', event.order)
+  try {
+    clientsEvent.run('command', event.id, 'STATE_UPDATE', event.order)
+    clientsEvent.runAll('adminCommand', 'ORDER_UPDATE', event.order)
+  } catch (e) {
+    console.log('Given id is not defined.', e)
+  }
+})
+
+orderEvents.on('placed', event => {
+  try {
+    clientsEvent.runAll('adminCommand', 'PREORDER_UPDATE', event.order)
+  } catch (e) {
+    console.log('Given id is not defined.', e)
+  }
 })
 
 orderEvents.on('canceled', event => {
-  clientsEvent.run('command', event.id, 'STATE_UPDATE', event.order)
+  try {
+    clientsEvent.run('command', event.id, 'STATE_UPDATE', event.order)
+    clientsEvent.runAll('adminCommand', 'ORDER_UPDATE', event.order)
+  } catch (e) {
+    console.log('Given id is not defined.', e)
+  }
 })
 
 orderEvents.on('payments', event => {
-  // FIXME : 아직 결제를 승인하는 front UI가 구현되지 않아 3초 후에 자동으로 요청 승인
-  if (event.order.state === StoreOrderState.WaitingAccept) {
-    setTimeout(async () => {
-      await orders.accept(event.id)
-    }, 3000)
-  }
+  // // FIXME : 아직 결제를 승인하는 front UI가 구현되지 않아 3초 후에 자동으로 요청 승인
+  // if (event.order.state === StoreOrderState.WaitingAccept) {
+  //   setTimeout(async () => {
+  //     await orders.accept(event.id)
+  //   }, 3000)
+  // }
 
   // 지정된 시간 후에도 결제가 완료되지 않는 경우 결제를 취소
   if (event.order.state === StoreOrderState.WaitingPayment) {
@@ -27,5 +45,11 @@ orderEvents.on('payments', event => {
         await orders.cancel(event.id, '결제 시간 초과')
       }
     }, ((process.env.DEFAULT_PAYMENT_TIMEOUT as number | undefined) || 99999) * 1000)
+  }
+
+  try {
+    clientsEvent.runAll('adminCommand', 'ORDER_UPDATE', event.id)
+  } catch (e) {
+    console.log('Given id is not defined.', e)
   }
 })

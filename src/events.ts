@@ -6,6 +6,7 @@ const createUUID = (): string => {
 }
 
 interface WebSocketClientsEvent {
+  adminCommand: (...args: any[]) => void
   command: (...args: any[]) => void
 }
 

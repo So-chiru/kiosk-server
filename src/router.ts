@@ -16,6 +16,7 @@ export const ghttp = graphqlHTTP({
 import addRoutes from './routes/add'
 import clerkRoutes from './routes/clerk'
 import orderRoutes from './routes/order'
+import authRoutes from './routes/auth'
 
 // TODO : 만약 상태 인증을 필요로 하는 route가 있는 경우 KioskRoute interface에 authentication: true를
 // 구현하여 접속 중인 세션에 대한 인증을 진행할 수 있도록 구현
@@ -58,6 +59,6 @@ const routesAdd = (to: Router, ...args: KioskRoute[][]) =>
     routes.map(route => to[route.method](route.url, makeSafeRoute(route.func)))
   )
 
-routesAdd(router, addRoutes, clerkRoutes, orderRoutes)
+routesAdd(router, addRoutes, clerkRoutes, orderRoutes, authRoutes)
 
 export default router

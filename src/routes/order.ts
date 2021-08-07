@@ -57,6 +57,30 @@ const Route: KioskRoute[] = [
     }
   },
   {
+    method: 'get',
+    url: '/orders',
+    func: async (ctx: Context) => {
+      const query = ctx.query
+
+      if (
+        typeof query.start !== 'undefined' ||
+        typeof query.end !== 'undefined'
+      ) {
+        const start = Number(query.start)
+        const end = Number(query.end)
+
+        if (isNaN(start) || start < 0 || start > 2 ** 32)
+          throw new Error('검색 시작 범위 값이 올바르지 않습니다.')
+        if (isNaN(end) || end < 0 || end > 2 ** 32)
+          throw new Error('검색 시작 범위 값이 올바르지 않습니다.')
+
+        return orders.findByDate(start, end)
+      }
+
+      return orders.all()
+    }
+  },
+  {
     method: 'post',
     url: '/order/:orderId/payment',
     func: async ctx => {
@@ -195,7 +219,7 @@ const Route: KioskRoute[] = [
     }
   },
   {
-    method: 'post',
+    method: 'get',
     url: '/order/:orderId/accept',
     func: async ctx => {
       const orderId = ctx.params.orderId
@@ -255,6 +279,7 @@ const Route: KioskRoute[] = [
 
       try {
         clientsEvent.run('command', order.id, 'STATE_UPDATE', newOrder)
+        clientsEvent.runAll('adminCommand', 'ORDER_UPDATE', newOrder)
       } catch (e) {}
 
       return true
@@ -289,14 +314,20 @@ const Route: KioskRoute[] = [
         orderId,
         ctx.request.body.reason,
         async (order, reason) => {
-          if (order.state === StoreOrderState.WaitingAccept) {
+          if (
+            order.state === StoreOrderState.WaitingAccept ||
+            order.state === StoreOrderState.Done
+          ) {
+            if (order.payWith === StorePaymentMethod.Direct) {
+              return true
+            }
+
             try {
               await tossAPI.cancelPayment(order.id, reason)
 
               return true
             } catch (e) {
-              console.log(e)
-              return false
+              return e
             }
           }
 

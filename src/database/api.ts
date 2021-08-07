@@ -35,6 +35,16 @@ const getAllMenuItems = async () => {
   return Object.keys(data).map(key => JSON.parse(data[key]))
 }
 
+const getAllOrders = async () => {
+  const data = await promisify(db.hgetall).bind(db)('orders')
+
+  if (!data) {
+    return null
+  }
+
+  return Object.keys(data).map(key => JSON.parse(data[key]))
+}
+
 const getMenus = async () => {
   const keys = await promisify(db.lrange).bind(db)('menuLists', 0, -1)
 
@@ -89,6 +99,9 @@ const getOrder = async (orderId: string): Promise<StoreOrder | null> => {
   return JSON.parse(data)
 }
 
+const getOrders = async (...orderId: string[]) =>
+  Promise.all(orderId.map(v => getOrder(v)))
+
 const findOrder = async (orderId: string): Promise<DBFoundOrder | null> => {
   let data = await getOrder(orderId)
   let isPreOrder: boolean | null = false
@@ -106,6 +119,23 @@ const findOrder = async (orderId: string): Promise<DBFoundOrder | null> => {
     preOrder: isPreOrder,
     order: data
   }
+}
+
+const findOrderRange = async (
+  start: number,
+  end: number
+): Promise<string[] | null> => {
+  const data = await promisify(db.zrangebyscore).bind(db)(
+    'ordersDate',
+    start,
+    end
+  )
+
+  if (!data) {
+    return null
+  }
+
+  return data as string[]
 }
 
 const updateOrder = async (
@@ -142,8 +172,11 @@ const updatePreOrder = async (
   return true
 }
 
-const deletePreOrder = async (orderId: string): Promise<boolean> => {
-  return new Promise((resolve, reject) =>
+const deletePreOrder = async (
+  orderId: string,
+  notDeleteDate?: boolean
+): Promise<boolean> => {
+  return new Promise((resolve, reject) => {
     db.hdel('preOrders', orderId, (err, res) => {
       if (err) {
         return reject(err)
@@ -155,7 +188,11 @@ const deletePreOrder = async (orderId: string): Promise<boolean> => {
 
       return resolve(true)
     })
-  )
+
+    if (!notDeleteDate) {
+      db.zrem('ordersDate', orderId)
+    }
+  })
 }
 
 const deleteOrder = async (orderId: string): Promise<boolean> => {
@@ -204,8 +241,25 @@ const makeAnPreOrder = async (
   return orderData
 }
 
+const makeAnOrderDate = async (order: StoreOrder): Promise<number> => {
+  return new Promise((resolve, reject) =>
+    db.zadd(
+      'ordersDate',
+      Math.floor(new Date(order.date).getTime() / 1000),
+      order.id,
+      (err, res) => {
+        if (err) {
+          return reject(err)
+        }
+
+        return resolve(res)
+      }
+    )
+  )
+}
+
 const promotePreOrderToOrder = async (order: StoreOrder) => {
-  await deletePreOrder(order.id)
+  await deletePreOrder(order.id, true)
 
   const data = await promisify(db.hset).bind(db)([
     'orders',
@@ -279,10 +333,14 @@ export default {
   getAllCategories,
   getMenuItem,
   getAllMenuItems,
+  getAllOrders,
   deletePreOrder,
   getPreOrder,
+  findOrderRange,
+  makeAnOrderDate,
   updatePreOrder,
   getOrder,
+  getOrders,
   updateOrder,
   makeAnPreOrder,
   promotePreOrderToOrder,
